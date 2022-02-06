@@ -48,6 +48,7 @@ executable futhark-language-server
         futhark ^>=0.21.5,
         text,
         hslogger,
+        lens,
         futhark-language-server
 
     hs-source-dirs:   app
