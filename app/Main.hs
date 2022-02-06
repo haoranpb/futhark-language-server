@@ -6,6 +6,7 @@ import Control.Monad.IO.Class
 import qualified Data.Text as T
 import Language.LSP.Server
 import Language.LSP.Types
+import System.Log.Logger
 
 handlers :: Handlers (LspM ())
 handlers =
@@ -13,6 +14,7 @@ handlers =
     [ notificationHandler SInitialized $ \_not -> do
         sendNotification SWindowShowMessage (ShowMessageParams MtInfo "Futhark language extension initialized"),
       requestHandler STextDocumentHover $ \req responder -> do
+        liftIO $ debugM "futhark" "Got hover request"
         let RequestMessage _ _ _ (HoverParams _doc pos _workDone) = req
             Position _l _c' = pos
             rsp = Hover ms (Just range)
@@ -22,7 +24,8 @@ handlers =
     ]
 
 main :: IO Int
-main =
+main = do
+  setupLogger Nothing ["futhark"] DEBUG
   runServer $
     ServerDefinition
       { onConfigurationChange = const $ const $ Right (),
