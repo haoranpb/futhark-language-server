@@ -25,17 +25,17 @@ handlers =
       requestHandler STextDocumentHover $ \req responder -> do
         liftIO $ debugM "futhark" "Got hover request"
         let RequestMessage _ _ _ (HoverParams doc pos _workDone) = req
-            Position _l _c' = pos
+            Position l c = pos
             rsp = Hover ms (Just range)
             ms = HoverContents $ markedUpContent "futhark-language-server" "Hello world"
             range = Range pos pos
         let filePath = uriToFilePath $ doc ^. uri
-        debug $ show filePath
         case filePath of
           Just path -> do
             debug $ show path
+            debug $ "LSP Position: " ++ show (l, c)
             (_, imports, _) <- readProgramOrDie path
-            case atPos imports $ Pos path 1 30 0 of
+            case atPos imports $ Pos path (fromEnum l + 1) (fromEnum c) 0 of
               Nothing -> debug "No information available"
               Just (AtName qn def loc) -> do
                 debug $ "Name: " ++ show qn
