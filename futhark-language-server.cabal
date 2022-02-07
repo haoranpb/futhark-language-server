@@ -21,35 +21,41 @@ maintainer:         haoranpb@outlook.com
 -- category:
 extra-source-files: CHANGELOG.md
 
-library
-    exposed-modules:  MyLib
+-- library
+    -- exposed-modules:
 
     -- Modules included in this library but not exported.
-    -- other-modules:
+--     other-modules:
+--             Futhark.LSP.Handlers
+--             Futhark.LSP.Utils
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    
-        base ^>=4.14.3.0
-    hs-source-dirs:   src
-    default-language: Haskell2010
+--     build-depends:    
+
+--     hs-source-dirs:   src
+--     default-language: Haskell2010
 
 executable futhark-language-server
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    -- other-modules:
+    other-modules:
+            Handlers
+            Utils
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
+
     build-depends:
         base ^>=4.14.3.0,
         lsp ^>=1.4,
         futhark ^>=0.21.5,
         text,
-        hslogger,
         lens,
-        futhark-language-server
+        hslogger
 
-    hs-source-dirs:   app
+    hs-source-dirs:
+            app,
+            src
     default-language: Haskell2010
