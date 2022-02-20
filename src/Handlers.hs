@@ -7,20 +7,20 @@ import Control.Lens ((^.))
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
-import Futhark.Compiler (readProgramOrDie)
+import Futhark.Compiler (Imports, readProgramOrDie)
 import Futhark.Util.Loc (Pos (Pos), srclocOf)
 import Language.Futhark.Query
 import Language.Futhark.Syntax (locStr, pretty)
 import Language.LSP.Server (Handlers, LspM, notificationHandler, requestHandler)
 import Language.LSP.Types
 import Language.LSP.Types.Lens (HasUri (uri))
-import Utils (debug)
+import Utils
 
 onInitializeHandler :: Handlers (LspM ())
 onInitializeHandler = notificationHandler SInitialized $ \_not -> debug "Initialized"
 
-onHoverHandler :: Handlers (LspM ())
-onHoverHandler = requestHandler STextDocumentHover $ \req responder -> do
+onHoverHandler :: MVar State -> Handlers (LspM ())
+onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
   debug "Got hover request"
   let RequestMessage _ _ _ (HoverParams doc pos _workDone) = req
       Position l c = pos
@@ -32,7 +32,7 @@ onHoverHandler = requestHandler STextDocumentHover $ \req responder -> do
     Just path -> do
       debug $ show path
       debug $ "LSP Position: " ++ show (l, c)
-      (_, imports, _) <- readProgramOrDie path
+      imports <- liftIO $ takeImportsFromState state path
       case atPos imports $ Pos path (fromEnum l + 1) (fromEnum c) 0 of
         Nothing -> debug "No information available"
         Just (AtName qn def loc) -> do
@@ -52,6 +52,20 @@ onHoverHandler = requestHandler STextDocumentHover $ \req responder -> do
     Nothing -> do
       debug "No path"
   responder (Right $ Just rsp)
+
+takeImportsFromState :: MVar State -> FilePath -> IO Imports
+takeImportsFromState state path = do
+  s <- takeMVar state
+  case stateProgram s of
+    Nothing -> do
+      debug "Empty state, compiling ..."
+      (_, imports, _) <- readProgramOrDie path
+      -- put Nothing when Error
+      putMVar state (State (Just imports))
+      pure imports
+    Just imports -> do
+      putMVar state (State (Just imports))
+      pure imports
 
 -- onOpenDocumentHandler :: MVar State -> Handlers (LspM ())
 -- onOpenDocumentHandler state = notificationHandler STextDocumentDidOpen $ \msg -> do
