@@ -24,34 +24,32 @@ onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
   debug "Got hover request"
   let RequestMessage _ _ _ (HoverParams doc pos _workDone) = req
       Position l c = pos
-      rsp = Hover ms (Just range)
-      ms = HoverContents $ markedUpContent "futhark-language-server" "Hello world"
       range = Range pos pos
-  let filePath = uriToFilePath $ doc ^. uri
-  case filePath of
-    Just path -> do
-      debug $ show path
-      debug $ "LSP Position: " ++ show (l, c)
-      imports <- liftIO $ takeImportsFromState state path
-      case atPos imports $ Pos path (fromEnum l + 1) (fromEnum c) 0 of
-        Nothing -> debug "No information available"
-        Just (AtName qn def loc) -> do
-          debug $ "Name: " ++ show qn
-          debug $ "Position: " ++ locStr (srclocOf loc)
-          case def of
-            Nothing -> return ()
-            Just (BoundTerm t defloc) -> do
-              debug $ "Type: " ++ pretty t
-              debug $ "Definition: " ++ locStr (srclocOf defloc)
-            Just (BoundType defloc) ->
-              debug $ "Definition: " ++ locStr (srclocOf defloc)
-            Just (BoundModule defloc) ->
-              debug $ "Definition: " ++ locStr (srclocOf defloc)
-            Just (BoundModuleType defloc) ->
-              debug $ "Definition: " ++ locStr (srclocOf defloc)
-    Nothing -> do
-      debug "No path"
+  msg <- liftIO $ getHoverInfo (uriToFilePath $ doc ^. uri) state (fromEnum l + 1) (fromEnum c)
+  let ms = HoverContents $ MarkupContent MkMarkdown msg
+      rsp = Hover ms (Just range)
   responder (Right $ Just rsp)
+
+getHoverInfo :: Maybe FilePath -> MVar State -> Int -> Int -> IO T.Text
+getHoverInfo Nothing _ _ _ = do
+  debug "No path" -- throw error
+  pure "404 FilePath not found"
+getHoverInfo (Just path) state l c = do
+  imports <- takeImportsFromState state path
+  case atPos imports $ Pos path l c 0 of
+    Nothing -> pure "No information available"
+    Just (AtName qn def _loc) -> do
+      debug $ "Found " ++ show qn
+      case def of
+        Nothing -> pure ""
+        Just (BoundTerm t defloc) -> do
+          pure $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
+        Just (BoundType defloc) ->
+          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+        Just (BoundModule defloc) ->
+          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+        Just (BoundModuleType defloc) ->
+          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
 
 takeImportsFromState :: MVar State -> FilePath -> IO Imports
 takeImportsFromState state path = do
