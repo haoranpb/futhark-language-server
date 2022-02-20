@@ -10,11 +10,11 @@ module Main where
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.STM.TChan
-import Control.Monad
+import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.STM
+import Control.Monad.STM (atomically)
 import qualified Data.Aeson as J
-import Handlers (onHoverHandler)
+import Handlers (onHoverHandler, onInitializeHandler)
 import Language.LSP.Server
 import qualified Language.LSP.Types as J
 import qualified Language.LSP.Types.Lens as J
@@ -24,8 +24,7 @@ import Utils (debug)
 handlers :: Handlers (LspM ())
 handlers =
   mconcat
-    [ -- notificationHandler SInitialized $ \_not -> do
-      --   debug "Initialized",
+    [ onInitializeHandler,
       onHoverHandler
     ]
 

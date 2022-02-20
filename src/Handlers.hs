@@ -16,6 +16,9 @@ import Language.LSP.Types
 import Language.LSP.Types.Lens (HasUri (uri))
 import Utils (debug)
 
+onInitializeHandler :: Handlers (LspM ())
+onInitializeHandler = notificationHandler SInitialized $ \_not -> debug "Initialized"
+
 onHoverHandler :: Handlers (LspM ())
 onHoverHandler = requestHandler STextDocumentHover $ \req responder -> do
   debug "Got hover request"
