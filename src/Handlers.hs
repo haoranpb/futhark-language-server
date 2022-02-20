@@ -66,17 +66,3 @@ takeImportsFromState state path = do
     Just imports -> do
       putMVar state (State (Just imports))
       pure imports
-
--- onOpenDocumentHandler :: MVar State -> Handlers (LspM ())
--- onOpenDocumentHandler state = notificationHandler STextDocumentDidOpen $ \msg -> do
---   let NotificationMessage _ _ (DidOpenTextDocumentParams doc) = msg
---       filePath = uriToFilePath $ doc ^. uri
---   case filePath of
---     Just path -> do
---       debug $ "On open file" ++ show path
---       debug "Compiling..."
---       (_, imports, _) <- readProgramOrDie path
---       liftIO $ putMVar state $ State imports
---       debug "Compilation done"
---     Nothing -> do
---       debug "404 file not found"
