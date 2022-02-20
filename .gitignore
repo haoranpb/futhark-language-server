@@ -3,3 +3,6 @@
 
 # out
 dist-newstyle
+
+# local editor settings
+.vscode
