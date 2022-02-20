@@ -2,12 +2,16 @@
 
 module Handlers where
 
+import Control.Concurrent.MVar
 import Control.Lens ((^.))
+import Control.Monad (void)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import qualified Data.Text as T
 import Futhark.Compiler (readProgramOrDie)
 import Futhark.Util.Loc (Pos (Pos), srclocOf)
 import Language.Futhark.Query
 import Language.Futhark.Syntax (locStr, pretty)
-import Language.LSP.Server (Handlers, LspM, requestHandler)
+import Language.LSP.Server (Handlers, LspM, notificationHandler, requestHandler)
 import Language.LSP.Types
 import Language.LSP.Types.Lens (HasUri (uri))
 import Utils (debug)
@@ -45,3 +49,17 @@ onHoverHandler = requestHandler STextDocumentHover $ \req responder -> do
     Nothing -> do
       debug "No path"
   responder (Right $ Just rsp)
+
+-- onOpenDocumentHandler :: MVar State -> Handlers (LspM ())
+-- onOpenDocumentHandler state = notificationHandler STextDocumentDidOpen $ \msg -> do
+--   let NotificationMessage _ _ (DidOpenTextDocumentParams doc) = msg
+--       filePath = uriToFilePath $ doc ^. uri
+--   case filePath of
+--     Just path -> do
+--       debug $ "On open file" ++ show path
+--       debug "Compiling..."
+--       (_, imports, _) <- readProgramOrDie path
+--       liftIO $ putMVar state $ State imports
+--       debug "Compilation done"
+--     Nothing -> do
+--       debug "404 file not found"
