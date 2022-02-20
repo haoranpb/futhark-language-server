@@ -17,7 +17,7 @@ import Language.LSP.Types.Lens (HasUri (uri))
 import Utils
 
 onInitializeHandler :: Handlers (LspM ())
-onInitializeHandler = notificationHandler SInitialized $ \_not -> debug "Initialized"
+onInitializeHandler = notificationHandler SInitialized $ \_msg -> debug "Initialized"
 
 onHoverHandler :: MVar State -> Handlers (LspM ())
 onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
@@ -50,6 +50,29 @@ getHoverInfo (Just path) state l c = do
           pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
         Just (BoundModuleType defloc) ->
           pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+
+onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
+onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg -> do
+  debug "Saved document"
+  let NotificationMessage _ _ (DidSaveTextDocumentParams doc _text) = msg
+      filePath = uriToFilePath $ doc ^. uri
+  case filePath of
+    Nothing -> debug "No path"
+    Just path -> do
+      debug $ "Saved document " ++ show path
+      debug "re-compiling"
+      (_, imports, _) <- readProgramOrDie path
+      liftIO $ swapMVar state (State (Just imports))
+      pure ()
+
+onDocumentOpenHandler :: MVar State -> Handlers (LspM ())
+onDocumentOpenHandler state = notificationHandler STextDocumentDidOpen $ \msg -> debug "Opened document"
+
+onDocumentChangeHandler :: MVar State -> Handlers (LspM ())
+onDocumentChangeHandler state = notificationHandler STextDocumentDidSave $ \msg -> debug "Changed document"
+
+onDocumentCloseHandler :: MVar State -> Handlers (LspM ())
+onDocumentCloseHandler state = notificationHandler STextDocumentDidClose $ \msg -> debug "Closed document"
 
 takeImportsFromState :: MVar State -> FilePath -> IO Imports
 takeImportsFromState state path = do

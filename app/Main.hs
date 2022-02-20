@@ -14,9 +14,18 @@ import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.STM (atomically)
 import qualified Data.Aeson as J
-import Handlers (onHoverHandler, onInitializeHandler)
+import Handlers
+  ( onDocumentChangeHandler,
+    onDocumentCloseHandler,
+    onDocumentOpenHandler,
+    onDocumentSaveHandler,
+    onHoverHandler,
+    onInitializeHandler,
+  )
 import Language.LSP.Server
+import Language.LSP.Types
 import qualified Language.LSP.Types as J
+import Language.LSP.Types.Lens (HasSave (save))
 import qualified Language.LSP.Types.Lens as J
 import System.Log.Logger (Priority (DEBUG))
 import Utils (State (State), debug)
@@ -25,7 +34,11 @@ handlers :: MVar State -> Handlers (LspM ())
 handlers state =
   mconcat
     [ onInitializeHandler,
-      onHoverHandler state
+      onHoverHandler state,
+      onDocumentSaveHandler state,
+      onDocumentOpenHandler state,
+      onDocumentChangeHandler state,
+      onDocumentCloseHandler state
     ]
 
 -- The reactor is a process that serializes and buffers all requests from the
@@ -76,5 +89,15 @@ main = do
         doInitialize = \env _req -> forkIO (reactor state rin) >> pure (Right env),
         staticHandlers = lspHandlers state rin,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
-        options = defaultOptions
+        options = defaultOptions {textDocumentSync = Just syncOptions}
       }
+
+syncOptions :: TextDocumentSyncOptions
+syncOptions =
+  TextDocumentSyncOptions
+    { _openClose = Just True,
+      _change = Just TdSyncIncremental,
+      _willSave = Just False,
+      _willSaveWaitUntil = Just False,
+      _save = Just $ InR $ SaveOptions $ Just False
+    }
