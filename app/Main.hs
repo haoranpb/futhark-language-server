@@ -35,14 +35,10 @@ handlers stateMVar =
       onDocumentSaveHandler stateMVar
     ]
 
--- The reactor is a process that serializes and buffers all requests from the
--- LSP client, so they can be sent to the backend compiler one at a time, and a
--- reply sent.
+-- Reactor design copied from lsp/Reactor example
+-- Not sure if needed
 newtype ReactorInput = ReactorAction (IO ())
 
--- The single point that all events flow through, allowing management of state
--- to stitch replies and requests together from the two asynchronous sides: lsp
--- server and backend compiler
 reactor :: TChan ReactorInput -> IO ()
 reactor inp = do
   debug "Started the reactor"
@@ -50,8 +46,6 @@ reactor inp = do
     ReactorAction act <- atomically $ readTChan inp
     act
 
--- Check if we have a handler, and if we create a haskell-lsp handler to pass it as
--- input into the reactor
 lspHandlers :: MVar State -> TChan ReactorInput -> Handlers (LspM ())
 lspHandlers stateMVar rin = mapHandlers goReq goNot (handlers stateMVar)
   where
@@ -68,7 +62,7 @@ lspHandlers stateMVar rin = mapHandlers goReq goNot (handlers stateMVar)
 main :: IO Int
 main = do
   stateMVar <- newMVar emptyState
-  debug "init State with Nothing"
+  debug "Init with emptyState"
   rin <- atomically newTChan :: IO (TChan ReactorInput)
   setupLogger Nothing ["futhark"] DEBUG
   runServer $
