@@ -6,12 +6,12 @@ import Control.Concurrent.MVar
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
-import Futhark.Compiler (Imports, Warnings, readProgram)
+import Futhark.Compiler (Imports, readProgram)
 import Futhark.Compiler.CLI (runFutharkM)
 import Futhark.Compiler.Config (Verbosity (NotVerbose))
 import Futhark.FreshNames (VNameSource)
 import Futhark.Pipeline (CompilerError (ExternalError), FutharkM)
-import Futhark.Util.Loc (Pos (Pos), srclocOf)
+import Futhark.Util.Loc (Pos (Pos), SrcLoc, srclocOf)
 import Language.Futhark.Query
 import Language.Futhark.Syntax (locStr, pretty)
 import Language.LSP.Diagnostics (partitionBySource)
@@ -88,7 +88,11 @@ tryCompile Nothing = pure Nothing
 tryCompile (Just path) = do
   res <- liftIO $ runFutharkM (readProgram mempty path) NotVerbose
   case res of
-    Right (_, imports, _) -> pure (Just imports)
+    Right (warnings, imports, _) -> do
+      -- why can't I operate on warnings as a list?
+      let diag = mkDiagnostic (Range (Position 2 0) (Position 2 10)) DsWarning (T.pack $ pretty warnings)
+      sendDiagnostics (toNormalizedUri $ filePathToUri path) [diag]
+      pure (Just imports)
     Left (ExternalError e) -> do
       debug "Compilation failed, publishing diagnostics"
       -- how to recover range from error?
@@ -105,3 +109,9 @@ sendDiagnostics uri diags = publishDiagnostics 100 uri (Just 0) (partitionBySour
 
 mkDiagnostic :: Range -> DiagnosticSeverity -> T.Text -> Diagnostic
 mkDiagnostic rang severity msg = Diagnostic rang (Just severity) Nothing (Just "futhark") msg Nothing Nothing
+
+-- warningsToDiagnostics :: W.Warnings -> [Diagnostic]
+-- warningsToDiagnostics warnings =
+--   map
+--     (\w -> mkDiagnostic (Range (Position 2 0) (Position 2 10)) DsWarning (T.pack $ pretty w) )
+--     warnings
