@@ -60,23 +60,18 @@ parseResultFromImports _ _ _ _ = pure $ Just "No information available"
 
 onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg -> do
-  debug "Saved document"
   let NotificationMessage _ _ (DidSaveTextDocumentParams doc _text) = msg
       filePath = uriToFilePath $ doc ^. uri
-  case filePath of
-    Nothing -> debug "No path"
-    Just path -> do
-      debug $ "Saved document " ++ show path
-      debug "re-compiling"
-      liftIO $ do
-        result <- tryCompile filePath
-        case result of
-          Nothing -> debug "Failed to re-compile, using previous state"
-          Just imports -> do
-            debug "Re-compile successful"
-            swapMVar state (State (Just imports))
-            pure ()
-      pure ()
+  debug $ "Saved document" ++ show filePath
+  debug "re-compiling"
+  liftIO $ do
+    result <- tryCompile filePath
+    case result of
+      Nothing -> debug "Failed to re-compile, using previous state"
+      Just imports -> do
+        debug "Re-compile successful"
+        swapMVar state (State (Just imports))
+        pure ()
 
 -- no re-compile
 tryTakeImportsFromState :: MVar State -> Maybe FilePath -> IO (Maybe Imports)
