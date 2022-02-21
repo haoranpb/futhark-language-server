@@ -7,7 +7,7 @@
 
 module Main where
 
-import Control.Concurrent (forkIO, newEmptyMVar)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM.TChan
 import Control.Monad (forever)
