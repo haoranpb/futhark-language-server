@@ -2,12 +2,11 @@
 
 module Handlers where
 
-import Control.Concurrent.MVar
+import Control.Concurrent.MVar (MVar, modifyMVar, swapMVar)
 import Control.Lens ((^.))
-import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
-import Futhark.Compiler (Imports, Warnings, readProgram, readProgramOrDie)
+import Futhark.Compiler (Imports, Warnings, readProgram)
 import Futhark.Compiler.CLI (runFutharkM)
 import Futhark.Compiler.Config (Verbosity (NotVerbose))
 import Futhark.FreshNames (VNameSource)
@@ -38,30 +37,26 @@ onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
     Nothing -> responder (Right Nothing)
 
 getHoverInfo :: Maybe FilePath -> MVar State -> Int -> Int -> IO (Maybe T.Text)
-getHoverInfo Nothing _ _ _ = do
-  debug "No path" -- throw error
-  pure Nothing
-getHoverInfo (Just path) state l c = do
-  result <- tryTakeImportsFromState state path
-  case result of
-    Nothing -> do
-      debug "No imports"
-      pure Nothing
-    Just imports -> do
-      case atPos imports $ Pos path l c 0 of
-        Nothing -> pure $ Just "No information available"
-        Just (AtName qn def _loc) -> do
-          debug $ "Found " ++ show qn
-          case def of
-            Nothing -> pure $ Just ""
-            Just (BoundTerm t defloc) -> do
-              pure $ Just $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
-            Just (BoundType defloc) ->
-              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
-            Just (BoundModule defloc) ->
-              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
-            Just (BoundModuleType defloc) ->
-              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+getHoverInfo filePath state l c = do
+  result <- tryTakeImportsFromState state filePath
+  parseResultFromImports result filePath l c
+
+parseResultFromImports :: Maybe Imports -> Maybe FilePath -> Int -> Int -> IO (Maybe T.Text)
+parseResultFromImports (Just imports) (Just path) l c = do
+  case atPos imports $ Pos path l c 0 of
+    Nothing -> pure $ Just "No information available"
+    Just (AtName qn def _loc) -> do
+      case def of
+        Nothing -> pure $ Just ""
+        Just (BoundTerm t defloc) -> do
+          pure $ Just $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
+        Just (BoundType defloc) ->
+          pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+        Just (BoundModule defloc) ->
+          pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+        Just (BoundModuleType defloc) ->
+          pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+parseResultFromImports _ _ _ _ = pure $ Just "No information available"
 
 onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg -> do
@@ -74,7 +69,7 @@ onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg ->
       debug $ "Saved document " ++ show path
       debug "re-compiling"
       liftIO $ do
-        result <- tryCompile path
+        result <- tryCompile filePath
         case result of
           Nothing -> debug "Failed to re-compile, using previous state"
           Just imports -> do
@@ -83,18 +78,20 @@ onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg ->
             pure ()
       pure ()
 
-tryTakeImportsFromState :: MVar State -> FilePath -> IO (Maybe Imports)
-tryTakeImportsFromState state path = do
+-- no re-compile
+tryTakeImportsFromState :: MVar State -> Maybe FilePath -> IO (Maybe Imports)
+tryTakeImportsFromState state filePath = do
   modifyMVar state $ \s -> do
     case stateProgram s of
       Nothing -> do
-        result <- tryCompile path
+        result <- tryCompile filePath
         pure (s {stateProgram = result}, result)
       Just imports -> pure (s, Just imports)
 
-tryCompile :: FilePath -> IO (Maybe Imports)
-tryCompile file = do
-  res <- runFutharkM (readProgram mempty file) NotVerbose
+tryCompile :: Maybe FilePath -> IO (Maybe Imports)
+tryCompile Nothing = pure Nothing
+tryCompile (Just path) = do
+  res <- runFutharkM (readProgram mempty path) NotVerbose
   case res of
     Left err -> do
       debug $ "Compilation failed\n" ++ show err
