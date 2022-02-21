@@ -43,8 +43,8 @@ newtype ReactorInput = ReactorAction (IO ())
 -- The single point that all events flow through, allowing management of state
 -- to stitch replies and requests together from the two asynchronous sides: lsp
 -- server and backend compiler
-reactor :: MVar State -> TChan ReactorInput -> IO ()
-reactor stateMVar inp = do
+reactor :: TChan ReactorInput -> IO ()
+reactor inp = do
   debug "Started the reactor"
   forever $ do
     ReactorAction act <- atomically $ readTChan inp
@@ -75,7 +75,7 @@ main = do
     ServerDefinition
       { onConfigurationChange = const $ const $ Right (),
         defaultConfig = (),
-        doInitialize = \env _req -> forkIO (reactor stateMVar rin) >> pure (Right env),
+        doInitialize = \env _req -> forkIO (reactor rin) >> pure (Right env),
         staticHandlers = lspHandlers stateMVar rin,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options = defaultOptions {textDocumentSync = Just syncOptions}
