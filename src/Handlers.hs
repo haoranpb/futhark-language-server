@@ -30,8 +30,8 @@ onHoverHandler stateMVar = requestHandler STextDocumentHover $ \req responder ->
       Position l c = pos
       range = Range pos pos
       filePath = uriToFilePath $ doc ^. uri
-  imports <- tryTakeStateFromMVar stateMVar filePath
-  result <- liftIO $ parseHoverInfoFromImports (stateProgram imports) filePath (fromEnum l + 1) (fromEnum c)
+  state <- tryTakeStateFromMVar stateMVar filePath
+  result <- liftIO $ getHoverInfoFromImports (stateProgram state) filePath (fromEnum l + 1) (fromEnum c + 1)
   case result of
     Just msg -> do
       let ms = HoverContents $ MarkupContent MkMarkdown msg
@@ -39,13 +39,13 @@ onHoverHandler stateMVar = requestHandler STextDocumentHover $ \req responder ->
       responder (Right $ Just rsp)
     Nothing -> responder (Right Nothing)
 
-parseHoverInfoFromImports :: Maybe Imports -> Maybe FilePath -> Int -> Int -> IO (Maybe T.Text)
-parseHoverInfoFromImports (Just imports) (Just path) l c = do
+getHoverInfoFromImports :: Maybe Imports -> Maybe FilePath -> Int -> Int -> IO (Maybe T.Text)
+getHoverInfoFromImports (Just imports) (Just path) l c = do
   case atPos imports $ Pos path l c 0 of
     Nothing -> pure $ Just "No information available"
     Just (AtName qn def _loc) -> do
       case def of
-        Nothing -> pure $ Just ""
+        Nothing -> pure $ Just "No information available"
         Just (BoundTerm t defloc) -> do
           pure $ Just $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
         Just (BoundType defloc) ->
@@ -54,7 +54,7 @@ parseHoverInfoFromImports (Just imports) (Just path) l c = do
           pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
         Just (BoundModuleType defloc) ->
           pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
-parseHoverInfoFromImports _ _ _ _ = pure $ Just "No information available"
+getHoverInfoFromImports _ _ _ _ = pure $ Just "No information available"
 
 onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler stateMVar = notificationHandler STextDocumentDidSave $ \msg -> do
@@ -108,7 +108,7 @@ sendDiagnostics :: NormalizedUri -> [Diagnostic] -> LspT () IO ()
 sendDiagnostics uri diags = publishDiagnostics 100 uri (Just 0) (partitionBySource diags)
 
 mkDiagnostic :: Range -> DiagnosticSeverity -> T.Text -> Diagnostic
-mkDiagnostic rang severity msg = Diagnostic rang (Just severity) Nothing (Just "futhark") msg Nothing Nothing
+mkDiagnostic range severity msg = Diagnostic range (Just severity) Nothing (Just "futhark") msg Nothing Nothing
 
 -- warningsToDiagnostics :: W.Warnings -> [Diagnostic]
 -- warningsToDiagnostics warnings =
