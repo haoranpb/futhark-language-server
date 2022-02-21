@@ -15,10 +15,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.STM (atomically)
 import qualified Data.Aeson as J
 import Handlers
-  ( onDocumentChangeHandler,
-    onDocumentCloseHandler,
-    onDocumentOpenHandler,
-    onDocumentSaveHandler,
+  ( onDocumentSaveHandler,
     onHoverHandler,
     onInitializeHandler,
   )
@@ -35,10 +32,7 @@ handlers state =
   mconcat
     [ onInitializeHandler,
       onHoverHandler state,
-      onDocumentSaveHandler state,
-      onDocumentOpenHandler state,
-      onDocumentChangeHandler state,
-      onDocumentCloseHandler state
+      onDocumentSaveHandler state
     ]
 
 -- The reactor is a process that serializes and buffers all requests from the

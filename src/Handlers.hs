@@ -7,7 +7,11 @@ import Control.Lens ((^.))
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
-import Futhark.Compiler (Imports, readProgramOrDie)
+import Futhark.Compiler (Imports, Warnings, readProgram, readProgramOrDie)
+import Futhark.Compiler.CLI (runFutharkM)
+import Futhark.Compiler.Config (Verbosity (NotVerbose))
+import Futhark.FreshNames (VNameSource)
+import Futhark.Pipeline (FutharkM)
 import Futhark.Util.Loc (Pos (Pos), srclocOf)
 import Language.Futhark.Query
 import Language.Futhark.Syntax (locStr, pretty)
@@ -25,31 +29,39 @@ onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
   let RequestMessage _ _ _ (HoverParams doc pos _workDone) = req
       Position l c = pos
       range = Range pos pos
-  msg <- liftIO $ getHoverInfo (uriToFilePath $ doc ^. uri) state (fromEnum l + 1) (fromEnum c)
-  let ms = HoverContents $ MarkupContent MkMarkdown msg
-      rsp = Hover ms (Just range)
-  responder (Right $ Just rsp)
+  result <- liftIO $ getHoverInfo (uriToFilePath $ doc ^. uri) state (fromEnum l + 1) (fromEnum c)
+  case result of
+    Just msg -> do
+      let ms = HoverContents $ MarkupContent MkMarkdown msg
+          rsp = Hover ms (Just range)
+      responder (Right $ Just rsp)
+    Nothing -> responder (Right Nothing)
 
-getHoverInfo :: Maybe FilePath -> MVar State -> Int -> Int -> IO T.Text
+getHoverInfo :: Maybe FilePath -> MVar State -> Int -> Int -> IO (Maybe T.Text)
 getHoverInfo Nothing _ _ _ = do
   debug "No path" -- throw error
-  pure "404 FilePath not found"
+  pure Nothing
 getHoverInfo (Just path) state l c = do
-  imports <- takeImportsFromState state path
-  case atPos imports $ Pos path l c 0 of
-    Nothing -> pure "No information available"
-    Just (AtName qn def _loc) -> do
-      debug $ "Found " ++ show qn
-      case def of
-        Nothing -> pure ""
-        Just (BoundTerm t defloc) -> do
-          pure $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
-        Just (BoundType defloc) ->
-          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
-        Just (BoundModule defloc) ->
-          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
-        Just (BoundModuleType defloc) ->
-          pure $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+  result <- tryTakeImportsFromState state path
+  case result of
+    Nothing -> do
+      debug "No imports"
+      pure Nothing
+    Just imports -> do
+      case atPos imports $ Pos path l c 0 of
+        Nothing -> pure $ Just "No information available"
+        Just (AtName qn def _loc) -> do
+          debug $ "Found " ++ show qn
+          case def of
+            Nothing -> pure $ Just ""
+            Just (BoundTerm t defloc) -> do
+              pure $ Just $ T.pack $ pretty qn ++ " :: " ++ pretty t ++ "\n\n" ++ "**Definition: " ++ locStr (srclocOf defloc) ++ "**"
+            Just (BoundType defloc) ->
+              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+            Just (BoundModule defloc) ->
+              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
+            Just (BoundModuleType defloc) ->
+              pure $ Just $ T.pack $ "Definition: " ++ locStr (srclocOf defloc)
 
 onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg -> do
@@ -61,29 +73,30 @@ onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg ->
     Just path -> do
       debug $ "Saved document " ++ show path
       debug "re-compiling"
-      (_, imports, _) <- readProgramOrDie path
-      liftIO $ swapMVar state (State (Just imports))
+      liftIO $ do
+        result <- tryCompile path
+        case result of
+          Nothing -> debug "Failed to re-compile, using previous state"
+          Just imports -> do
+            debug "Re-compile successful"
+            swapMVar state (State (Just imports))
+            pure ()
       pure ()
 
-onDocumentOpenHandler :: MVar State -> Handlers (LspM ())
-onDocumentOpenHandler state = notificationHandler STextDocumentDidOpen $ \msg -> debug "Opened document"
+tryTakeImportsFromState :: MVar State -> FilePath -> IO (Maybe Imports)
+tryTakeImportsFromState state path = do
+  modifyMVar state $ \s -> do
+    case stateProgram s of
+      Nothing -> do
+        result <- tryCompile path
+        pure (s {stateProgram = result}, result)
+      Just imports -> pure (s, Just imports)
 
-onDocumentChangeHandler :: MVar State -> Handlers (LspM ())
-onDocumentChangeHandler state = notificationHandler STextDocumentDidSave $ \msg -> debug "Changed document"
-
-onDocumentCloseHandler :: MVar State -> Handlers (LspM ())
-onDocumentCloseHandler state = notificationHandler STextDocumentDidClose $ \msg -> debug "Closed document"
-
-takeImportsFromState :: MVar State -> FilePath -> IO Imports
-takeImportsFromState state path = do
-  s <- takeMVar state
-  case stateProgram s of
-    Nothing -> do
-      debug "Empty state, compiling ..."
-      (_, imports, _) <- readProgramOrDie path
-      -- put Nothing when Error
-      putMVar state (State (Just imports))
-      pure imports
-    Just imports -> do
-      putMVar state (State (Just imports))
-      pure imports
+tryCompile :: FilePath -> IO (Maybe Imports)
+tryCompile file = do
+  res <- runFutharkM (readProgram mempty file) NotVerbose
+  case res of
+    Left err -> do
+      debug $ "Compilation failed\n" ++ show err
+      pure Nothing
+    Right (_, imports, _) -> pure (Just imports)
