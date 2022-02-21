@@ -24,14 +24,14 @@ onInitializeHandler :: Handlers (LspM ())
 onInitializeHandler = notificationHandler SInitialized $ \_msg -> debug "Initialized"
 
 onHoverHandler :: MVar State -> Handlers (LspM ())
-onHoverHandler state = requestHandler STextDocumentHover $ \req responder -> do
+onHoverHandler stateMVar = requestHandler STextDocumentHover $ \req responder -> do
   debug "Got hover request"
   let RequestMessage _ _ _ (HoverParams doc pos _workDone) = req
       Position l c = pos
       range = Range pos pos
       filePath = uriToFilePath $ doc ^. uri
-  imports <- tryTakeImportsFromState state filePath
-  result <- liftIO $ parseHoverInfoFromImports imports filePath (fromEnum l + 1) (fromEnum c)
+  imports <- tryTakeStateFromMVar stateMVar filePath
+  result <- liftIO $ parseHoverInfoFromImports (stateProgram imports) filePath (fromEnum l + 1) (fromEnum c)
   case result of
     Just msg -> do
       let ms = HoverContents $ MarkupContent MkMarkdown msg
@@ -57,34 +57,34 @@ parseHoverInfoFromImports (Just imports) (Just path) l c = do
 parseHoverInfoFromImports _ _ _ _ = pure $ Just "No information available"
 
 onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
-onDocumentSaveHandler state = notificationHandler STextDocumentDidSave $ \msg -> do
+onDocumentSaveHandler stateMVar = notificationHandler STextDocumentDidSave $ \msg -> do
   let NotificationMessage _ _ (DidSaveTextDocumentParams doc _text) = msg
       filePath = uriToFilePath $ doc ^. uri
   debug $ "Saved document" ++ show filePath
   debug "re-compiling"
-  result <- tryCompile filePath
-  case result of
+  newState <- tryCompile filePath
+  case stateProgram newState of
     Nothing -> debug "Failed to re-compile, using previous state"
-    Just imports -> do
+    Just _ -> do
       debug "Re-compile successful"
-      liftIO $ swapMVar state (State (Just imports))
+      liftIO $ swapMVar stateMVar newState
       pure ()
 
 -- no re-compile
-tryTakeImportsFromState :: MVar State -> Maybe FilePath -> LspT () IO (Maybe Imports)
-tryTakeImportsFromState state filePath = do
-  s <- liftIO $ takeMVar state
-  case stateProgram s of
+tryTakeStateFromMVar :: MVar State -> Maybe FilePath -> LspT () IO State
+tryTakeStateFromMVar stateMVar filePath = do
+  oldState <- liftIO $ takeMVar stateMVar
+  case stateProgram oldState of
     Nothing -> do
-      result <- tryCompile filePath
-      liftIO $ putMVar state (s {stateProgram = result})
-      pure result
+      newState <- tryCompile filePath
+      liftIO $ putMVar stateMVar newState
+      pure newState
     Just imports -> do
-      liftIO $ putMVar state s
-      pure $ Just imports
+      liftIO $ putMVar stateMVar oldState
+      pure oldState
 
-tryCompile :: Maybe FilePath -> LspT () IO (Maybe Imports)
-tryCompile Nothing = pure Nothing
+tryCompile :: Maybe FilePath -> LspT () IO State
+tryCompile Nothing = pure emptyState
 tryCompile (Just path) = do
   res <- liftIO $ runFutharkM (readProgram mempty path) NotVerbose
   case res of
@@ -92,16 +92,16 @@ tryCompile (Just path) = do
       -- why can't I operate on warnings as a list?
       let diag = mkDiagnostic (Range (Position 2 0) (Position 2 10)) DsWarning (T.pack $ pretty warnings)
       sendDiagnostics (toNormalizedUri $ filePathToUri path) [diag]
-      pure (Just imports)
+      pure $ State (Just imports)
     Left (ExternalError e) -> do
       debug "Compilation failed, publishing diagnostics"
       -- how to recover range from error?
       let diag = mkDiagnostic (Range (Position 0 0) (Position 0 10)) DsError (T.pack $ pretty e)
       sendDiagnostics (toNormalizedUri $ filePathToUri path) [diag]
-      pure Nothing
+      pure emptyState
     Left e -> do
       debug $ "Futhark compilation InternalError\n" ++ show e ++ "\nPlease contact support"
-      pure Nothing
+      pure emptyState
 
 -- not sure what version do yet, put (Just 0) for now
 sendDiagnostics :: NormalizedUri -> [Diagnostic] -> LspT () IO ()

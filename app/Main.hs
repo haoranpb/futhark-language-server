@@ -8,7 +8,7 @@
 module Main where
 
 import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar
+import Control.Concurrent.MVar (MVar, newMVar)
 import Control.Concurrent.STM.TChan
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -25,40 +25,35 @@ import qualified Language.LSP.Types as J
 import Language.LSP.Types.Lens (HasSave (save))
 import qualified Language.LSP.Types.Lens as J
 import System.Log.Logger (Priority (DEBUG))
-import Utils (State (State), debug)
+import Utils (State (State), debug, emptyState)
 
 handlers :: MVar State -> Handlers (LspM ())
-handlers state =
+handlers stateMVar =
   mconcat
     [ onInitializeHandler,
-      onHoverHandler state,
-      onDocumentSaveHandler state
+      onHoverHandler stateMVar,
+      onDocumentSaveHandler stateMVar
     ]
 
 -- The reactor is a process that serializes and buffers all requests from the
 -- LSP client, so they can be sent to the backend compiler one at a time, and a
 -- reply sent.
-newtype ReactorInput = ReactorAction (IO ()) -- State -> IO ()
+newtype ReactorInput = ReactorAction (IO ())
 
 -- The single point that all events flow through, allowing management of state
 -- to stitch replies and requests together from the two asynchronous sides: lsp
 -- server and backend compiler
 reactor :: MVar State -> TChan ReactorInput -> IO ()
-reactor state inp = do
+reactor stateMVar inp = do
   debug "Started the reactor"
   forever $ do
-    -- s <- tryTakeMVar state
-    -- -- check if state is empty, if so, compile
-    -- case s of
-    --   Nothing -> debug "State is empty, compiling" -- how to get the filePath to compile?
-    --   Just _st -> debug "State exits, continuing" -- check if needed re-compile
     ReactorAction act <- atomically $ readTChan inp
     act
 
 -- Check if we have a handler, and if we create a haskell-lsp handler to pass it as
 -- input into the reactor
 lspHandlers :: MVar State -> TChan ReactorInput -> Handlers (LspM ())
-lspHandlers state rin = mapHandlers goReq goNot (handlers state)
+lspHandlers stateMVar rin = mapHandlers goReq goNot (handlers stateMVar)
   where
     goReq :: forall (a :: J.Method J.FromClient J.Request). Handler (LspM ()) a -> Handler (LspM ()) a
     goReq f = \msg k -> do
@@ -72,7 +67,7 @@ lspHandlers state rin = mapHandlers goReq goNot (handlers state)
 
 main :: IO Int
 main = do
-  state <- newMVar (State Nothing)
+  stateMVar <- newMVar emptyState
   debug "init State with Nothing"
   rin <- atomically newTChan :: IO (TChan ReactorInput)
   setupLogger Nothing ["futhark"] DEBUG
@@ -80,8 +75,8 @@ main = do
     ServerDefinition
       { onConfigurationChange = const $ const $ Right (),
         defaultConfig = (),
-        doInitialize = \env _req -> forkIO (reactor state rin) >> pure (Right env),
-        staticHandlers = lspHandlers state rin,
+        doInitialize = \env _req -> forkIO (reactor stateMVar rin) >> pure (Right env),
+        staticHandlers = lspHandlers stateMVar rin,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options = defaultOptions {textDocumentSync = Just syncOptions}
       }

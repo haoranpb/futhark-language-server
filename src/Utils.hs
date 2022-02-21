@@ -10,3 +10,6 @@ debug msg = liftIO $ debugM "futhark" msg
 newtype State = State
   { stateProgram :: Maybe Imports
   }
+
+emptyState :: State
+emptyState = State Nothing
