@@ -16,6 +16,8 @@ import Control.Monad.STM (atomically)
 import qualified Data.Aeson as J
 import Handlers
   ( onCompletionHandler,
+    onDocumentCloseHandler,
+    onDocumentOpenHandler,
     onDocumentSaveHandler,
     onHoverHandler,
     onInitializeHandler,
@@ -33,6 +35,8 @@ handlers stateMVar =
   mconcat
     [ onInitializeHandler,
       onHoverHandler stateMVar,
+      onDocumentOpenHandler stateMVar,
+      onDocumentCloseHandler stateMVar,
       onDocumentSaveHandler stateMVar,
       onCompletionHandler stateMVar
     ]
@@ -84,7 +88,7 @@ main = do
 syncOptions :: TextDocumentSyncOptions
 syncOptions =
   TextDocumentSyncOptions
-    { _openClose = Nothing, -- Just True,
+    { _openClose = Just True,
       _change = Nothing, -- Just TdSyncIncremental,
       _willSave = Just False,
       _willSaveWaitUntil = Just False,

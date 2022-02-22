@@ -62,15 +62,18 @@ onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler stateMVar = notificationHandler STextDocumentDidSave $ \msg -> do
   let NotificationMessage _ _ (DidSaveTextDocumentParams doc _text) = msg
       filePath = uriToFilePath $ doc ^. uri
-  debug $ "Saved document" ++ show filePath
-  debug "re-compiling"
-  newState <- tryCompile filePath
-  case stateProgram newState of
-    Nothing -> debug "Failed to re-compile, using previous state"
-    Just _ -> do
-      debug "Re-compile successful"
-      liftIO $ swapMVar stateMVar newState
-      pure ()
+  debug $ "Saved document: " ++ pretty filePath
+  tryReCompile stateMVar filePath
+
+onDocumentOpenHandler :: MVar State -> Handlers (LspM ())
+onDocumentOpenHandler stateMVar = notificationHandler STextDocumentDidOpen $ \msg -> do
+  let NotificationMessage _ _ (DidOpenTextDocumentParams doc) = msg
+      filePath = uriToFilePath $ doc ^. uri
+  debug $ "Opened document: " ++ pretty filePath
+  tryReCompile stateMVar filePath
+
+onDocumentCloseHandler :: MVar State -> Handlers (LspM ())
+onDocumentCloseHandler stateMVar = notificationHandler STextDocumentDidClose $ \msg -> debug "Closed document"
 
 onCompletionHandler :: MVar State -> Handlers (LspM ())
 onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
@@ -79,7 +82,7 @@ onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req re
       completionItem = mkCompletionItem "hello futhark"
   responder $ Right $ InL $ List [completionItem]
 
--- no re-compile
+-- try to take state from MVar, if it's empty (Nothing), try to compile.
 tryTakeStateFromMVar :: MVar State -> Maybe FilePath -> LspT () IO State
 tryTakeStateFromMVar stateMVar filePath = do
   oldState <- liftIO $ takeMVar stateMVar
@@ -92,13 +95,26 @@ tryTakeStateFromMVar stateMVar filePath = do
       liftIO $ putMVar stateMVar oldState
       pure oldState
 
+-- try to (re)-compile, replace old state if successful.
+tryReCompile :: MVar State -> Maybe FilePath -> LspT () IO ()
+tryReCompile stateMVar filePath = do
+  debug "(Re)-compiling ..."
+  newState <- tryCompile filePath
+  case stateProgram newState of
+    Nothing -> debug "Failed to (re)-compile, using previous state or Nothing"
+    Just _ -> do
+      debug "(Re)-compile successful"
+      liftIO $ swapMVar stateMVar newState
+      pure ()
+
+-- try to compile file, publish diagnostics on warnings or error, return newly compiled state.
+-- shouldn't be used in handlers directly.
 tryCompile :: Maybe FilePath -> LspT () IO State
 tryCompile Nothing = pure emptyState
 tryCompile (Just path) = do
   res <- liftIO $ runFutharkM (readProgram mempty path) NotVerbose
   case res of
     Right (warnings, imports, _) -> do
-      debug $ pretty warnings
       let diags = warningsToDiagnostics $ listWarnings warnings
       sendDiagnostics (toNormalizedUri $ filePathToUri path) diags
       pure $ State (Just imports)
