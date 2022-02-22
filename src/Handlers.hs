@@ -70,6 +70,13 @@ onDocumentSaveHandler stateMVar = notificationHandler STextDocumentDidSave $ \ms
       liftIO $ swapMVar stateMVar newState
       pure ()
 
+onCompletionHandler :: MVar State -> Handlers (LspM ())
+onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
+  debug "Got completion request"
+  let RequestMessage _ _ _ (CompletionParams doc pos _workDone _ _) = req
+      completionItem = mkCompletionItem "hello futhark"
+  responder $ Right $ InL $ List [completionItem]
+
 -- no re-compile
 tryTakeStateFromMVar :: MVar State -> Maybe FilePath -> LspT () IO State
 tryTakeStateFromMVar stateMVar filePath = do
@@ -109,6 +116,9 @@ sendDiagnostics uri diags = publishDiagnostics 100 uri (Just 0) (partitionBySour
 
 mkDiagnostic :: Range -> DiagnosticSeverity -> T.Text -> Diagnostic
 mkDiagnostic range severity msg = Diagnostic range (Just severity) Nothing (Just "futhark") msg Nothing Nothing
+
+mkCompletionItem :: T.Text -> CompletionItem
+mkCompletionItem label = CompletionItem label (Just CiText) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- warningsToDiagnostics :: W.Warnings -> [Diagnostic]
 -- warningsToDiagnostics warnings =

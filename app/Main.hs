@@ -15,7 +15,8 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.STM (atomically)
 import qualified Data.Aeson as J
 import Handlers
-  ( onDocumentSaveHandler,
+  ( onCompletionHandler,
+    onDocumentSaveHandler,
     onHoverHandler,
     onInitializeHandler,
   )
@@ -32,7 +33,8 @@ handlers stateMVar =
   mconcat
     [ onInitializeHandler,
       onHoverHandler stateMVar,
-      onDocumentSaveHandler stateMVar
+      onDocumentSaveHandler stateMVar,
+      onCompletionHandler stateMVar
     ]
 
 -- Reactor design copied from lsp/Reactor example
@@ -72,14 +74,18 @@ main = do
         doInitialize = \env _req -> forkIO (reactor rin) >> pure (Right env),
         staticHandlers = lspHandlers stateMVar rin,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
-        options = defaultOptions {textDocumentSync = Just syncOptions}
+        options =
+          defaultOptions
+            { textDocumentSync = Just syncOptions,
+              completionTriggerCharacters = Just ['.']
+            }
       }
 
 syncOptions :: TextDocumentSyncOptions
 syncOptions =
   TextDocumentSyncOptions
-    { _openClose = Just True,
-      _change = Just TdSyncIncremental,
+    { _openClose = Nothing, -- Just True,
+      _change = Nothing, -- Just TdSyncIncremental,
       _willSave = Just False,
       _willSaveWaitUntil = Just False,
       _save = Just $ InR $ SaveOptions $ Just False
