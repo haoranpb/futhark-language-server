@@ -50,7 +50,7 @@ executable futhark-language-server
     build-depends:
         base ^>=4.14.3.0,
         lsp ^>=1.4,
-        futhark ^>=0.21.5,
+        futhark,
         text,
         lens,
         hslogger,

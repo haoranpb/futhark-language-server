@@ -11,9 +11,11 @@ import Futhark.Compiler.CLI (runFutharkM)
 import Futhark.Compiler.Config (Verbosity (NotVerbose))
 import Futhark.FreshNames (VNameSource)
 import Futhark.Pipeline (CompilerError (ExternalError), FutharkM)
-import Futhark.Util.Loc (Pos (Pos), SrcLoc, srclocOf)
+import Futhark.Util.Loc (Loc (Loc), Pos (Pos), SrcLoc, locOf, srclocOf)
+import Futhark.Util.Pretty (Doc)
 import Language.Futhark.Query
 import Language.Futhark.Syntax (locStr, pretty)
+import Language.Futhark.Warnings (Warnings, listWarnings)
 import Language.LSP.Diagnostics (partitionBySource)
 import Language.LSP.Server (Handlers, LspM, LspT, flushDiagnosticsBySource, notificationHandler, publishDiagnostics, requestHandler)
 import Language.LSP.Types
@@ -96,9 +98,9 @@ tryCompile (Just path) = do
   res <- liftIO $ runFutharkM (readProgram mempty path) NotVerbose
   case res of
     Right (warnings, imports, _) -> do
-      -- why can't I operate on warnings as a list?
-      let diag = mkDiagnostic (Range (Position 2 0) (Position 2 10)) DsWarning (T.pack $ pretty warnings)
-      sendDiagnostics (toNormalizedUri $ filePathToUri path) [diag]
+      debug $ pretty warnings
+      let diags = warningsToDiagnostics $ listWarnings warnings
+      sendDiagnostics (toNormalizedUri $ filePathToUri path) diags
       pure $ State (Just imports)
     Left (ExternalError e) -> do
       debug "Compilation failed, publishing diagnostics"
@@ -120,8 +122,20 @@ mkDiagnostic range severity msg = Diagnostic range (Just severity) Nothing (Just
 mkCompletionItem :: T.Text -> CompletionItem
 mkCompletionItem label = CompletionItem label (Just CiText) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
--- warningsToDiagnostics :: W.Warnings -> [Diagnostic]
--- warningsToDiagnostics warnings =
---   map
---     (\w -> mkDiagnostic (Range (Position 2 0) (Position 2 10)) DsWarning (T.pack $ pretty w) )
---     warnings
+warningsToDiagnostics :: [(SrcLoc, [SrcLoc], Doc)] -> [Diagnostic]
+warningsToDiagnostics =
+  map
+    ( \(srcloc, _, msg) -> do
+        mkDiagnostic (rangeFromSrcLoc srcloc) DsWarning (T.pack $ pretty msg)
+    )
+
+-- the ending appears to be one col too short
+rangeFromSrcLoc :: SrcLoc -> Range
+rangeFromSrcLoc srcloc = do
+  let Loc start end = locOf srcloc
+  Range (getPosition start) (getPosition end)
+
+getPosition :: Pos -> Position
+getPosition pos = do
+  let Pos _ line col _ = pos
+  Position (toEnum line - 1) (toEnum col - 1)
