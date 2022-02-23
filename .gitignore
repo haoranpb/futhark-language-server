@@ -6,6 +6,3 @@ dist-newstyle
 
 # local editor settings
 .vscode
-
-# temparary ignore for using local futhark build
-cabal.project
