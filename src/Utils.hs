@@ -1,4 +1,9 @@
-module Utils where
+module Utils
+  ( debug,
+    State (..),
+    emptyState,
+  )
+where
 
 import Control.Monad.IO.Class (liftIO)
 import Futhark.Compiler (Imports)
