@@ -11,7 +11,7 @@ import Futhark.Util.Pretty (pretty)
 import Language.LSP.Server (Handlers, LspM, notificationHandler, requestHandler)
 import Language.LSP.Types
 import Language.LSP.Types.Lens (HasUri (uri))
-import Tool (getHoverInfoFromImports)
+import Tool (getHoverInfoFromState)
 import Utils (State (..), debug)
 
 onInitializeHandler :: Handlers (LspM ())
@@ -25,7 +25,7 @@ onHoverHandler stateMVar = requestHandler STextDocumentHover $ \req responder ->
       range = Range pos pos
       filePath = uriToFilePath $ doc ^. uri
   state <- tryTakeStateFromMVar stateMVar filePath
-  result <- liftIO $ getHoverInfoFromImports (stateProgram state) filePath (fromEnum l + 1) (fromEnum c + 1)
+  result <- liftIO $ getHoverInfoFromState state filePath (fromEnum l + 1) (fromEnum c + 1)
   case result of
     Just msg -> do
       let ms = HoverContents $ MarkupContent MkMarkdown msg

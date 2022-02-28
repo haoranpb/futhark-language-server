@@ -3,12 +3,14 @@
 module Diagnostic
   ( sendDiagnostics,
     warningsToDiagnostics,
-    errorToDiagnostic,
+    errorToDiagnostics,
   )
 where
 
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
-import Futhark.Util.Loc (Loc (Loc), Pos (Pos), SrcLoc, locOf)
+import Futhark.Compiler.Program (ProgramError (ProgramError))
+import Futhark.Util.Loc (Loc (Loc, NoLoc), Pos (Pos), SrcLoc, locOf)
 import Futhark.Util.Pretty (Doc, pretty)
 import Language.LSP.Diagnostics (partitionBySource)
 import Language.LSP.Server (LspT, publishDiagnostics)
@@ -35,14 +37,20 @@ warningsToDiagnostics =
     )
 
 -- mockup, pending for location exported from error
-errorToDiagnostic :: Diagnostic
-errorToDiagnostic = mkDiagnostic (Range (Position 0 0) (Position 0 0)) DsError "error"
+errorToDiagnostics :: NE.NonEmpty ProgramError -> [Diagnostic]
+errorToDiagnostics progErr = map onError (NE.toList progErr)
+  where
+    onError (ProgramError loc msg) = mkDiagnostic (rangeFromLoc loc) DsError (T.pack $ pretty msg)
 
 -- the ending appears to be one col too short
 rangeFromSrcLoc :: SrcLoc -> Range
 rangeFromSrcLoc srcloc = do
   let Loc start end = locOf srcloc
   Range (getPosition start) (getPosition end)
+
+rangeFromLoc :: Loc -> Range
+rangeFromLoc (Loc start end) = Range (getPosition start) (getPosition end)
+rangeFromLoc NoLoc = Range (Position 1 0) (Position 1 10) -- only when file not found
 
 getPosition :: Pos -> Position
 getPosition pos = do

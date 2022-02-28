@@ -6,14 +6,13 @@ module Utils
 where
 
 import Control.Monad.IO.Class (liftIO)
-import Futhark.Compiler (Imports)
-import Language.LSP.Server (LspT)
+import Futhark.Compiler.Program (LoadedProg)
 import System.Log.Logger (debugM)
 
 debug msg = liftIO $ debugM "futhark" msg
 
 newtype State = State
-  { stateProgram :: Maybe Imports
+  { stateProgram :: Maybe LoadedProg
   }
 
 emptyState :: State
