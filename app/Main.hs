@@ -43,8 +43,7 @@ main = do
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
-            { textDocumentSync = Just syncOptions,
-              completionTriggerCharacters = Just ['.']
+            { textDocumentSync = Just syncOptions
             }
       }
 
