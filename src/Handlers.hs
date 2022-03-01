@@ -54,8 +54,8 @@ onCompletionHandler :: MVar State -> Handlers (LspM ())
 onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
   debug "Got completion request"
   let RequestMessage _ _ _ (CompletionParams doc pos _workDone _ _) = req
-      completionItem = mkCompletionItem "hello futhark"
+      completionItem = mkCompletionItem "reduce undefined _ []"
   responder $ Right $ InL $ List [completionItem]
 
 mkCompletionItem :: T.Text -> CompletionItem
-mkCompletionItem label = CompletionItem label (Just CiText) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+mkCompletionItem label = CompletionItem label (Just CiFunction) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
