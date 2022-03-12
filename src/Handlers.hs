@@ -8,9 +8,9 @@ import Control.Lens ((^.))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
 import Futhark.Util.Pretty (pretty)
-import Language.LSP.Server (Handlers, LspM, notificationHandler, requestHandler)
+import Language.LSP.Server (Handlers, LspM, getVersionedTextDoc, notificationHandler, requestHandler)
 import Language.LSP.Types
-import Language.LSP.Types.Lens (HasUri (uri))
+import Language.LSP.Types.Lens (HasUri (uri), HasVersion (version))
 import Tool (getHoverInfoFromState)
 import Utils (State (..), debug)
 
@@ -37,15 +37,16 @@ onDocumentSaveHandler :: MVar State -> Handlers (LspM ())
 onDocumentSaveHandler stateMVar = notificationHandler STextDocumentDidSave $ \msg -> do
   let NotificationMessage _ _ (DidSaveTextDocumentParams doc _text) = msg
       filePath = uriToFilePath $ doc ^. uri
-  debug $ "Saved document: " ++ pretty filePath
-  tryReCompile stateMVar filePath
+  versionedDoc <- getVersionedTextDoc doc
+  debug $ "Saved document: " ++ show versionedDoc
+  tryReCompile stateMVar filePath (versionedDoc ^. version)
 
 onDocumentOpenHandler :: MVar State -> Handlers (LspM ())
 onDocumentOpenHandler stateMVar = notificationHandler STextDocumentDidOpen $ \msg -> do
   let NotificationMessage _ _ (DidOpenTextDocumentParams doc) = msg
       filePath = uriToFilePath $ doc ^. uri
   debug $ "Opened document: " ++ pretty filePath
-  tryReCompile stateMVar filePath
+  tryReCompile stateMVar filePath (Just $ doc ^. version)
 
 onDocumentCloseHandler :: MVar State -> Handlers (LspM ())
 onDocumentCloseHandler stateMVar = notificationHandler STextDocumentDidClose $ \msg -> debug "Closed document"

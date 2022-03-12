@@ -20,11 +20,12 @@ import Language.LSP.Types
     NormalizedUri,
     Position (Position),
     Range (Range),
+    TextDocumentVersion,
   )
 
 -- TODO: not sure what version do yet, put (Just 0) for now
-sendDiagnostics :: NormalizedUri -> [Diagnostic] -> LspT () IO ()
-sendDiagnostics uri diags = publishDiagnostics 100 uri (Just 0) (partitionBySource diags)
+sendDiagnostics :: NormalizedUri -> [Diagnostic] -> TextDocumentVersion -> LspT () IO ()
+sendDiagnostics uri diags version = publishDiagnostics 100 uri version (partitionBySource diags)
 
 mkDiagnostic :: Range -> DiagnosticSeverity -> T.Text -> Diagnostic
 mkDiagnostic range severity msg = Diagnostic range (Just severity) Nothing (Just "futhark") msg Nothing Nothing
