@@ -22,7 +22,7 @@ import Language.LSP.Types
     Range (Range),
   )
 
--- not sure what version do yet, put (Just 0) for now
+-- TODO: not sure what version do yet, put (Just 0) for now
 sendDiagnostics :: NormalizedUri -> [Diagnostic] -> LspT () IO ()
 sendDiagnostics uri diags = publishDiagnostics 100 uri (Just 0) (partitionBySource diags)
 
@@ -36,7 +36,6 @@ warningsToDiagnostics =
         mkDiagnostic (rangeFromSrcLoc srcloc) DsWarning (T.pack $ pretty msg)
     )
 
--- mockup, pending for location exported from error
 errorToDiagnostics :: NE.NonEmpty ProgramError -> [Diagnostic]
 errorToDiagnostics progErr = map onError (NE.toList progErr)
   where

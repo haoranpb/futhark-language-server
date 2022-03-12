@@ -13,7 +13,7 @@ import Utils (State (..), debug, emptyState)
 -- try to take state from MVar, if it's empty (Nothing), try to compile.
 tryTakeStateFromMVar :: MVar State -> Maybe FilePath -> LspT () IO State
 tryTakeStateFromMVar stateMVar filePath = do
-  oldState <- liftIO $ takeMVar stateMVar
+  oldState <- liftIO $ takeMVar stateMVar -- TODO: change to modifyMVar for exception handling
   case stateProgram oldState of
     Nothing -> do
       newState <- tryCompile filePath (State $ Just noLoadedProg)
@@ -27,7 +27,7 @@ tryTakeStateFromMVar stateMVar filePath = do
 tryReCompile :: MVar State -> Maybe FilePath -> LspT () IO ()
 tryReCompile stateMVar filePath = do
   debug "(Re)-compiling ..."
-  oldState <- liftIO $ takeMVar stateMVar
+  oldState <- liftIO $ takeMVar stateMVar -- TODO: change to modifyMVar_ for exception handling
   newState <- tryCompile filePath oldState
   case stateProgram newState of
     Nothing -> do

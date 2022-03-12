@@ -57,5 +57,6 @@ onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req re
       completionItem = mkCompletionItem "reduce undefined _ []"
   responder $ Right $ InL $ List [completionItem]
 
+-- TODO: separate completion logic to another file
 mkCompletionItem :: T.Text -> CompletionItem
 mkCompletionItem label = CompletionItem label (Just CiFunction) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
