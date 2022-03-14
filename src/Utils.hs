@@ -8,7 +8,7 @@ where
 
 import Control.Monad.IO.Class (liftIO)
 import Futhark.Compiler.Program (LoadedProg)
-import Language.LSP.Types (List (List), SemanticTokens (..))
+import Language.LSP.Types (List (List), SemanticTokens (..), UInt)
 import System.Log.Logger (debugM)
 
 debug msg = liftIO $ debugM "futhark" msg

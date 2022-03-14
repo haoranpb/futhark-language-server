@@ -8,7 +8,7 @@ module SemanticTokens (getSemanticTokens) where
 
 import Control.Monad (msum)
 import Control.Monad.IO.Class (liftIO)
-import Data.List (find)
+import Data.List (find, sortOn)
 import Futhark.Compiler.Program (lpImports)
 import Futhark.Util.Loc (Loc (Loc))
 import Language.Futhark.Query
@@ -31,57 +31,43 @@ getSemanticTokens state (Just path) =
       case prog of
         Nothing -> pure emptySemanticTokens
         Just prog' -> do
-          finalTokens <- msum $ map getTokens (progDecs prog')
-          debug $ "Final Tokens: " ++ show finalTokens
-          pure emptySemanticTokens
-      pure emptySemanticTokens
+          tokens <- getTokens (progDecs prog')
+          debug $ show (progDecs prog')
+          pure $ SemanticTokens Nothing (encodeTokens tokens)
       where
         file = includeToString $ mkInitialImport $ fst $ Posix.splitExtension path
 getSemanticTokens _ Nothing = pure emptySemanticTokens
 
 -- Only focusing on ValDec for proof of concept
 -- Others can be easily added by going through the AST
-getTokens :: Showable f vn => DecBase f vn -> IO (List [UInt])
-getTokens (ValDec vBind) = do
+getTokens :: Showable f vn => [DecBase f vn] -> IO [[UInt]]
+getTokens ((ValDec vBind) : ds) = do
   debug "ValBind found, going in..."
   valBindTokens vBind
-getTokens (LocalDec dec _loc) = getTokens dec
-getTokens d = do
-  debug $ show d
-  pure $ List []
-
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindEntryPoint vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindName vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindRetDecl vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindRetType vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindTypeParams vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindBody vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindDoc vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindAttrs vBind)
--- debug $ "Depth: " ++ show depth ++ "ValBind: " ++ show (valBindLocation vBind)
+getTokens (_ : ds) = getTokens ds
+getTokens [] = pure []
 
 -- Implementing valBindParams first, rest can be easily added
-valBindTokens :: Showable f vn => ValBindBase f vn -> IO (List [UInt])
+valBindTokens :: Showable f vn => ValBindBase f vn -> IO [[UInt]]
 valBindTokens vBind = do
   debug "focusing on valBindParams..."
-  msum $ map valBindParamsTokens (valBindParams vBind)
+  pure $ concatMap valBindParamsTokens (valBindParams vBind)
 
-valBindParamsTokens :: Language.Futhark.Syntax.Showable f vn => PatBase f vn -> IO (List [UInt])
+valBindParamsTokens :: PatBase f vn -> [[UInt]]
 valBindParamsTokens (Id vn t loc) = do
-  debug $ "ValBindParam: (ID) " ++ show vn
+  -- debug $ "ValBindParam: (ID) " ++ show vn
   let tokens = srcLocToToken loc 7
-  debug $ "ID tokens: " ++ show tokens
-  pure tokens
+  -- debug $ "ID tokens: " ++ show tokens
+  [tokens]
 valBindParamsTokens (PatParens pat loc) = do
-  debug $ "ValBindParam: (PatParens) " ++ show pat ++ " " ++ locStr loc
+  -- debug $ "ValBindParam: (PatParens) " ++ show pat ++ " " ++ locStr loc
   valBindParamsTokens pat
 valBindParamsTokens (PatAscription pat typ loc) = do
-  debug $ "ValBindParam: (PatAscription) (Pat) " ++ show pat ++ " " ++ locStr loc
-  debug $ "ValBindParam: (PatAscription) (Type) " ++ show typ ++ " " ++ locStr (locOf typ)
-  typeDecTokens $ declaredType typ
-  valBindParamsTokens pat
-  pure $ List [[0, 0, 3, 1, 0]]
-valBindParamsTokens _ = pure $ List []
+  -- debug $ "ValBindParam: (PatAscription) (Pat) " ++ show pat ++ " " ++ locStr loc
+  -- debug $ "ValBindParam: (PatAscription) (Type) " ++ show typ ++ " " ++ locStr (locOf typ)
+  -- typeDecTokens $ declaredType typ
+  valBindParamsTokens pat ++ [[0, 0, 3, 1, 0]]
+valBindParamsTokens _ = []
 
 -- valBindParamsTokens (TuplePat pats loc) = do
 --   debug $ "ValBindParam: (TuplePat) " ++ show pats ++ " " ++ locStr loc
@@ -108,9 +94,23 @@ typeDecTokens e = pure ()
 -- Do not have multilineTokenSupport, as least for now
 -- Type of the token should be encoded by mapping, see doc below
 -- https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_semanticTokens
-srcLocToToken :: SrcLoc -> UInt -> List [UInt]
+srcLocToToken :: SrcLoc -> UInt -> [UInt]
 srcLocToToken srcLoc typeEnum = do
   let Loc start end = locOf srcLoc
       Pos _ line col_start _ = start
       Pos _ _ col_end _ = end
-  List [[toEnum line, toEnum col_start, toEnum $ col_end - col_start + 2, typeEnum, 0]]
+  [toEnum line - 1, toEnum col_start, toEnum $ col_end - col_start + 2, typeEnum, 0]
+
+-- encode tokens according to lsp spec
+encodeTokens :: [[UInt]] -> List UInt
+encodeTokens tokens = do
+  let sortedTokens = sortOn (\token -> head token * 100 + token !! 1) tokens -- assume max 100 char per line
+      encodedTokens =
+        scanl1
+          ( \t1 t2 ->
+              if head t1 == head t2
+                then [0, t2 !! 1 - t1 !! 1] ++ drop 2 t2
+                else t2
+          )
+          sortedTokens
+  List $ concat encodedTokens
