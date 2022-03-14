@@ -12,6 +12,7 @@ import Handlers
     onDocumentSaveHandler,
     onHoverHandler,
     onInitializeHandler,
+    onSemanticTokensHandler,
   )
 import Language.LSP.Server
 import Language.LSP.Types
@@ -26,7 +27,8 @@ handlers stateMVar =
       onDocumentOpenHandler stateMVar,
       onDocumentCloseHandler stateMVar,
       onDocumentSaveHandler stateMVar,
-      onCompletionHandler stateMVar
+      onCompletionHandler stateMVar,
+      onSemanticTokensHandler stateMVar
     ]
 
 main :: IO Int
