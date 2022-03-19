@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Handlers where
+module Handlers (handlers) where
 
 import Compile (tryReCompile, tryTakeStateFromMVar)
 import Control.Concurrent.MVar (MVar)
@@ -14,6 +14,18 @@ import Language.LSP.Types.Lens (HasUri (uri), HasVersion (version))
 import SemanticTokens (getSemanticTokens)
 import Tool (getHoverInfoFromState)
 import Utils (State (..), debug)
+
+handlers :: MVar State -> Handlers (LspM ())
+handlers stateMVar =
+  mconcat
+    [ onInitializeHandler,
+      onHoverHandler stateMVar,
+      onDocumentOpenHandler stateMVar,
+      onDocumentCloseHandler stateMVar,
+      onDocumentSaveHandler stateMVar,
+      onCompletionHandler stateMVar,
+      onSemanticTokensHandler stateMVar
+    ]
 
 onInitializeHandler :: Handlers (LspM ())
 onInitializeHandler = notificationHandler SInitialized $ \_msg -> debug "Initialized"

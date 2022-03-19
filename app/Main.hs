@@ -3,33 +3,13 @@
 
 module Main where
 
-import Control.Concurrent.MVar (MVar, newMVar)
+import Control.Concurrent.MVar (newMVar)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Handlers
-  ( onCompletionHandler,
-    onDocumentCloseHandler,
-    onDocumentOpenHandler,
-    onDocumentSaveHandler,
-    onHoverHandler,
-    onInitializeHandler,
-    onSemanticTokensHandler,
-  )
+import Handlers (handlers)
 import Language.LSP.Server
 import Language.LSP.Types
 import System.Log.Logger (Priority (DEBUG))
-import Utils (State (State), debug, emptyState)
-
-handlers :: MVar State -> Handlers (LspM ())
-handlers stateMVar =
-  mconcat
-    [ onInitializeHandler,
-      onHoverHandler stateMVar,
-      onDocumentOpenHandler stateMVar,
-      onDocumentCloseHandler stateMVar,
-      onDocumentSaveHandler stateMVar,
-      onCompletionHandler stateMVar,
-      onSemanticTokensHandler stateMVar
-    ]
+import Utils (debug, emptyState)
 
 main :: IO Int
 main = do
