@@ -1,1 +1,1 @@
-packages: futhark-language-server.cabal ../futhark/futhark.cabal
+packages: futhark-language-server.cabal ../compile-futhark/futhark.cabal
