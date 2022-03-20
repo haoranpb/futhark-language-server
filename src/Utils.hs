@@ -2,7 +2,6 @@ module Utils
   ( debug,
     State (..),
     emptyState,
-    emptySemanticTokens,
   )
 where
 
@@ -20,6 +19,3 @@ newtype State = State
 
 emptyState :: State
 emptyState = State Nothing
-
-emptySemanticTokens :: SemanticTokens
-emptySemanticTokens = SemanticTokens Nothing (List [0, 0, 3, 1, 0])
