@@ -6,11 +6,12 @@ module Utils
   )
 where
 
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Futhark.Compiler.Program (LoadedProg)
-import Language.LSP.Types (List (List), SemanticTokens (..), UInt)
+import Language.LSP.Types (List (List), SemanticTokens (..))
 import System.Log.Logger (debugM)
 
+debug :: Control.Monad.IO.Class.MonadIO m => String -> m ()
 debug msg = liftIO $ debugM "futhark" msg
 
 newtype State = State
