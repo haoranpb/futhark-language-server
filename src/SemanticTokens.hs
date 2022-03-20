@@ -6,8 +6,6 @@ module SemanticTokens (getSemanticTokens) where
 -- Partially finished for proof of concept
 -- The rest should be easily done following similar approach
 
-import Control.Monad (msum)
-import Control.Monad.IO.Class (liftIO)
 import Data.List (find, sortOn)
 import Futhark.Compiler.Program (lpImports)
 import Futhark.Util.Loc (Loc (Loc))
