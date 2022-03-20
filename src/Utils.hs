@@ -7,7 +7,6 @@ where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Futhark.Compiler.Program (LoadedProg)
-import Language.LSP.Types (List (List), SemanticTokens (..))
 import System.Log.Logger (debugM)
 
 debug :: Control.Monad.IO.Class.MonadIO m => String -> m ()
