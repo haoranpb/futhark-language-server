@@ -1,7 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
+module Main (main) where
 
 import Control.Concurrent.MVar (newMVar)
 import Control.Monad.IO.Class (MonadIO (liftIO))

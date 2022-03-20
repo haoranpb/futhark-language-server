@@ -20,7 +20,7 @@ handlers stateMVar =
     [ onInitializeHandler,
       onHoverHandler stateMVar,
       onDocumentOpenHandler stateMVar,
-      onDocumentCloseHandler stateMVar,
+      onDocumentCloseHandler,
       onDocumentSaveHandler stateMVar,
       onCompletionHandler stateMVar
     ]
@@ -59,13 +59,13 @@ onDocumentOpenHandler stateMVar = notificationHandler STextDocumentDidOpen $ \ms
   debug $ "Opened document: " ++ pretty filePath
   tryReCompile stateMVar filePath (Just $ doc ^. version)
 
-onDocumentCloseHandler :: MVar State -> Handlers (LspM ())
-onDocumentCloseHandler stateMVar = notificationHandler STextDocumentDidClose $ \msg -> debug "Closed document"
+onDocumentCloseHandler :: Handlers (LspM ())
+onDocumentCloseHandler = notificationHandler STextDocumentDidClose $ \_msg -> debug "Closed document"
 
 onCompletionHandler :: MVar State -> Handlers (LspM ())
-onCompletionHandler stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
+onCompletionHandler _stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
   debug "Got completion request"
-  let RequestMessage _ _ _ (CompletionParams doc pos _workDone _ _) = req
+  let RequestMessage _ _ _ (CompletionParams _doc _pos _workDone _ _) = req
       completionItem = mkCompletionItem "reduce undefined _ []"
   responder $ Right $ InL $ List [completionItem]
 
