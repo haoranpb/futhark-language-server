@@ -46,7 +46,6 @@ executable futhark-language-server
             Compile
             Tool
             Utils
-            SemanticTokens
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
