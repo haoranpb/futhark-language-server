@@ -56,8 +56,7 @@ executable futhark-language-server
         futhark,
         text,
         lens,
-        hslogger,
-        filepath
+        hslogger
 
     hs-source-dirs:
             app,
