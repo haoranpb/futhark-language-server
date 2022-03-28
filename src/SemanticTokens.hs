@@ -23,7 +23,7 @@ getSemanticTokens state (Just path) =
         Nothing -> pure emptySemanticTokens
         Just prog' -> do
           let tokens = getTokens (progDecs prog')
-          debug $ show (progDecs prog')
+          debug $ show tokens
           pure $ SemanticTokens Nothing (encodeTokens tokens)
       where
         file = includeToString $ mkInitialImport $ fst $ Posix.splitExtension path
@@ -53,7 +53,7 @@ tokenDec (ImportDec _filepath _file _loc) = []
 
 -- parameters in function declarations
 tokenPat :: PatBase f vn -> [[UInt]]
-tokenPat (Id _vn _t loc) = [srcLocToToken loc Parameter]
+tokenPat (Id _vn _t loc) = [mkSematicToken loc Parameter]
 tokenPat (TuplePat pats _loc) = concatMap tokenPat pats
 tokenPat (RecordPat fields _loc) = concatMap (tokenPat . snd) fields
 tokenPat (PatParens pat _loc) = tokenPat pat
@@ -66,9 +66,9 @@ tokenPat (PatAttr _attr pat _loc) = tokenPat pat
 -- TODO
 tokenExp :: ExpBase f vn -> [UInt]
 tokenExp (Literal _primv _loc) = []
-tokenExp (IntLit _i _t loc) = srcLocToToken loc Number
-tokenExp (FloatLit _f _t loc) = srcLocToToken loc Number
-tokenExp (StringLit _s loc) = srcLocToToken loc String
+tokenExp (IntLit _i _t loc) = mkSematicToken loc Number
+tokenExp (FloatLit _f _t loc) = mkSematicToken loc Number
+tokenExp (StringLit _s loc) = mkSematicToken loc String
 tokenExp (Var qn _t loc) = [] -- semantic depends on the context
 tokenExp (AppExp appExp _appRes) = tokenAppExp appExp
 tokenExp _ = []
@@ -88,8 +88,8 @@ tokenModParams _ = []
 tokenModExp :: ModExpBase f vn -> [UInt]
 tokenModExp _ = []
 
-srcLocToToken :: SrcLoc -> SemanticTokenTypes -> [UInt]
-srcLocToToken srcLoc tokenType = do
+mkSematicToken :: SrcLoc -> SemanticTokenTypes -> [UInt]
+mkSematicToken srcLoc tokenType = do
   let Loc start end = locOf srcLoc
       Pos _ line col_start _ = start
       Pos _ _ col_end _ = end
@@ -98,7 +98,8 @@ srcLocToToken srcLoc tokenType = do
 -- encode tokens according to lsp spec
 encodeTokens :: [[UInt]] -> List UInt
 encodeTokens tokens = do
-  let sortedTokens = sortOn (\token -> head token * 100 + token !! 1) tokens -- assume max 100 char per line
+  let nonEmptyTokens = filter (not . null) tokens
+      sortedTokens = sortOn (\token -> head token * 100 + token !! 1) nonEmptyTokens -- assume max 100 char per line
       encodedTokens =
         scanl1
           ( \t1 t2 ->
