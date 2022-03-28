@@ -11,6 +11,7 @@ import Futhark.Util.Pretty (pretty)
 import Language.LSP.Server (Handlers, LspM, getVersionedTextDoc, notificationHandler, requestHandler)
 import Language.LSP.Types
 import Language.LSP.Types.Lens (HasUri (uri), HasVersion (version))
+import SemanticTokens (getSemanticTokens)
 import Tool (getHoverInfoFromState)
 import Utils (State (..), debug)
 
@@ -22,7 +23,8 @@ handlers stateMVar =
       onDocumentOpenHandler stateMVar,
       onDocumentCloseHandler,
       onDocumentSaveHandler stateMVar,
-      onCompletionHandler stateMVar
+      onCompletionHandler stateMVar,
+      onSemanticTokensHandler stateMVar
     ]
 
 onInitializeHandler :: Handlers (LspM ())
@@ -61,6 +63,15 @@ onDocumentOpenHandler stateMVar = notificationHandler STextDocumentDidOpen $ \ms
 
 onDocumentCloseHandler :: Handlers (LspM ())
 onDocumentCloseHandler = notificationHandler STextDocumentDidClose $ \_msg -> debug "Closed document"
+
+onSemanticTokensHandler :: MVar State -> Handlers (LspM ())
+onSemanticTokensHandler stateMVar = requestHandler STextDocumentSemanticTokensFull $ \req responder -> do
+  debug "Got semantic tokens request"
+  let RequestMessage _ _ _ (SemanticTokensParams _workDone _partialToken doc) = req
+      filePath = uriToFilePath $ doc ^. uri
+  state <- tryTakeStateFromMVar stateMVar filePath
+  tokens <- liftIO $ getSemanticTokens state filePath
+  responder $ Right $ Just tokens
 
 onCompletionHandler :: MVar State -> Handlers (LspM ())
 onCompletionHandler _stateMVar = requestHandler STextDocumentCompletion $ \req responder -> do
