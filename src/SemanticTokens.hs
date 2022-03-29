@@ -1,13 +1,22 @@
 module SemanticTokens (getSemanticTokens) where
 
 import Data.List (find, sortOn)
+import Data.Text (Text)
 import Futhark.Compiler.Program (FileModule (fileProg), lpImports)
 import Futhark.Util.Loc (Loc (Loc), Pos (Pos))
 import Language.Futhark.Semantic (includeToString, mkInitialImport)
 import Language.Futhark.Syntax
-import Language.LSP.Types (List (..), SemanticTokens (..), UInt)
+import Language.LSP.Types
+  ( List (List),
+    SemanticTokenAbsolute (SemanticTokenAbsolute, line, startChar),
+    SemanticTokenTypes (..),
+    SemanticTokens (..),
+    UInt,
+    encodeTokens,
+    relativizeTokens,
+  )
 import qualified System.FilePath.Posix as Posix
-import Utils (SemanticTokenTypes (..), State (..), debug, emptySemanticTokens)
+import Utils (State (..), debug, emptySemanticTokens, semanticTokensLegend)
 
 getSemanticTokens :: State -> Maybe FilePath -> IO SemanticTokens
 getSemanticTokens state (Just path) =
@@ -24,36 +33,42 @@ getSemanticTokens state (Just path) =
         Just prog' -> do
           let tokens = getTokens (progDecs prog')
           debug $ show tokens
-          pure $ SemanticTokens Nothing (encodeTokens tokens)
+          case transformTokens tokens of
+            Left err -> do
+              debug $ "Error transforming tokens: " ++ show err
+              pure emptySemanticTokens
+            Right transformedTokens -> do
+              debug $ show transformedTokens
+              pure $ SemanticTokens Nothing (List transformedTokens)
       where
         file = includeToString $ mkInitialImport $ fst $ Posix.splitExtension path
 getSemanticTokens _ Nothing = pure emptySemanticTokens
 
-getTokens :: [DecBase f vn] -> [[UInt]]
+getTokens :: [DecBase f vn] -> [SemanticTokenAbsolute]
 getTokens = concatMap tokenDec
 
-tokenDec :: DecBase f vn -> [[UInt]]
+tokenDec :: DecBase f vn -> [SemanticTokenAbsolute]
 tokenDec (ValDec vbind) =
   case valBindRetDecl vbind of
     Nothing -> tokenExpPat
     Just ret -> tokenExpPat ++ tokenTypeExp ret
   where
-    tokenExpPat = tokenExp (valBindBody vbind) : concatMap tokenPat (valBindParams vbind)
+    tokenExpPat = tokenExp (valBindBody vbind) ++ concatMap tokenPat (valBindParams vbind)
 tokenDec (TypeDec tbind) = tokenTypeExp (typeExp tbind)
-tokenDec (SigDec sbind) = [tokenSigExp (sigExp sbind)]
+tokenDec (SigDec sbind) = tokenSigExp (sigExp sbind)
 tokenDec (ModDec mbind) =
   case modSignature mbind of
     Nothing -> tokenModExpParams
-    Just (sig, _) -> tokenSigExp sig : tokenModExpParams
+    Just (sig, _) -> tokenSigExp sig ++ tokenModExpParams
   where
-    tokenModExpParams = map tokenModParams (modParams mbind) ++ [tokenModExp (modExp mbind)]
-tokenDec (OpenDec mexp _loc) = [tokenModExp mexp]
+    tokenModExpParams = concatMap tokenModParams (modParams mbind) ++ tokenModExp (modExp mbind)
+tokenDec (OpenDec mexp _loc) = tokenModExp mexp
 tokenDec (LocalDec dec _loc) = tokenDec dec
 tokenDec (ImportDec _filepath _file _loc) = []
 
 -- parameters in function declarations
-tokenPat :: PatBase f vn -> [[UInt]]
-tokenPat (Id _vn _t loc) = [mkSematicToken loc Parameter]
+tokenPat :: PatBase f vn -> [SemanticTokenAbsolute]
+tokenPat (Id _vn _t loc) = [mkSematicToken loc SttParameter]
 tokenPat (TuplePat pats _loc) = concatMap tokenPat pats
 tokenPat (RecordPat fields _loc) = concatMap (tokenPat . snd) fields
 tokenPat (PatParens pat _loc) = tokenPat pat
@@ -64,48 +79,41 @@ tokenPat (PatConstr _name _t pats _loc) = concatMap tokenPat pats
 tokenPat (PatAttr _attr pat _loc) = tokenPat pat
 
 -- TODO
-tokenExp :: ExpBase f vn -> [UInt]
+tokenExp :: ExpBase f vn -> [SemanticTokenAbsolute]
 tokenExp (Literal _primv _loc) = []
-tokenExp (IntLit _i _t loc) = mkSematicToken loc Number
-tokenExp (FloatLit _f _t loc) = mkSematicToken loc Number
-tokenExp (StringLit _s loc) = mkSematicToken loc String
-tokenExp (Var qn _t loc) = [] -- semantic depends on the context
+tokenExp (IntLit _i _t loc) = [mkSematicToken loc SttNumber]
+tokenExp (FloatLit _f _t loc) = [mkSematicToken loc SttNumber]
+tokenExp (StringLit _s loc) = [mkSematicToken loc SttString]
+tokenExp (Var _qn _t _loc) = [] -- semantic depends on the context
 tokenExp (AppExp appExp _appRes) = tokenAppExp appExp
 tokenExp _ = []
 
-tokenAppExp :: AppExpBase f vn -> [UInt]
+tokenAppExp :: AppExpBase f vn -> [SemanticTokenAbsolute]
 tokenAppExp _ = []
 
-tokenTypeExp :: TypeExp vn -> [[UInt]]
+tokenTypeExp :: TypeExp vn -> [SemanticTokenAbsolute]
 tokenTypeExp _ = []
 
-tokenSigExp :: SigExpBase f vn -> [UInt]
+tokenSigExp :: SigExpBase f vn -> [SemanticTokenAbsolute]
 tokenSigExp _ = []
 
-tokenModParams :: ModParamBase f vn -> [UInt]
+tokenModParams :: ModParamBase f vn -> [SemanticTokenAbsolute]
 tokenModParams _ = []
 
-tokenModExp :: ModExpBase f vn -> [UInt]
+tokenModExp :: ModExpBase f vn -> [SemanticTokenAbsolute]
 tokenModExp _ = []
 
-mkSematicToken :: SrcLoc -> SemanticTokenTypes -> [UInt]
+mkSematicToken :: SrcLoc -> SemanticTokenTypes -> SemanticTokenAbsolute
 mkSematicToken srcLoc tokenType = do
   let Loc start end = locOf srcLoc
-      Pos _ line col_start _ = start
+      Pos _ tLine col_start _ = start
       Pos _ _ col_end _ = end
-  [toEnum line - 1, toEnum col_start, toEnum $ col_end - col_start + 2, toEnum $ fromEnum tokenType, 0]
+  SemanticTokenAbsolute (toEnum tLine - 1) (toEnum col_start) (toEnum $ col_end - col_start + 1) tokenType []
 
 -- encode tokens according to lsp spec
-encodeTokens :: [[UInt]] -> List UInt
-encodeTokens tokens = do
-  let nonEmptyTokens = filter (not . null) tokens
-      sortedTokens = sortOn (\token -> head token * 100 + token !! 1) nonEmptyTokens -- assume max 100 char per line
-      encodedTokens =
-        scanl1
-          ( \t1 t2 ->
-              if head t1 == head t2
-                then [0, t2 !! 1 - t1 !! 1] ++ drop 2 t2
-                else t2
-          )
-          sortedTokens
-  List $ concat encodedTokens
+transformTokens :: [SemanticTokenAbsolute] -> Either Text [UInt]
+transformTokens absTokens = do
+  -- assume max 100 char per line
+  let sortedTokens = sortOn (\token -> line token * 100 + startChar token) absTokens
+      relTokens = relativizeTokens sortedTokens
+  encodeTokens semanticTokensLegend relTokens
