@@ -84,11 +84,14 @@ tokenExp (Literal _primv _loc) = []
 tokenExp (IntLit _i _t loc) = [mkSematicToken loc SttNumber]
 tokenExp (FloatLit _f _t loc) = [mkSematicToken loc SttNumber]
 tokenExp (StringLit _s loc) = [mkSematicToken loc SttString]
-tokenExp (Var _qn _t _loc) = [] -- semantic depends on the context
+tokenExp (Var _qn _t loc) = [mkSematicToken loc SttKeyword] -- Question: how to work on "f PatType"
+tokenExp (Parens appExp _loc) = tokenExp appExp
 tokenExp (AppExp appExp _appRes) = tokenAppExp appExp
 tokenExp _ = []
 
 tokenAppExp :: AppExpBase f vn -> [SemanticTokenAbsolute]
+tokenAppExp (BinOp _qn _t (exp1, _stuc1) (exp2, _struc2) _loc) = tokenExp exp1 ++ tokenExp exp2
+tokenAppExp (Apply exp1 exp2 _diet _loc) = tokenExp exp1 ++ tokenExp exp2
 tokenAppExp _ = []
 
 tokenTypeExp :: TypeExp vn -> [SemanticTokenAbsolute]
@@ -103,12 +106,17 @@ tokenModParams _ = []
 tokenModExp :: ModExpBase f vn -> [SemanticTokenAbsolute]
 tokenModExp _ = []
 
+-- Question: is this the case?
+inferVarType :: PatType -> SemanticTokenTypes
+inferVarType (Scalar _) = SttFunction
+inferVarType _ = SttVariable
+
 mkSematicToken :: SrcLoc -> SemanticTokenTypes -> SemanticTokenAbsolute
 mkSematicToken srcLoc tokenType = do
   let Loc start end = locOf srcLoc
       Pos _ tLine col_start _ = start
       Pos _ _ col_end _ = end
-  SemanticTokenAbsolute (toEnum tLine - 1) (toEnum col_start) (toEnum $ col_end - col_start + 1) tokenType []
+  SemanticTokenAbsolute (toEnum tLine - 1) (toEnum col_start -1) (toEnum $ col_end - col_start + 1) tokenType []
 
 -- encode tokens according to lsp spec
 transformTokens :: [SemanticTokenAbsolute] -> Either Text [UInt]
