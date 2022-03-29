@@ -1,7 +1,7 @@
 module SemanticTokens (getSemanticTokens) where
 
 import Data.List (find, sortOn)
-import Data.Text (Text)
+import Data.Text (Text, tail)
 import Futhark.Compiler.Program (FileModule (fileProg), lpImports)
 import Futhark.Util.Loc (Loc (Loc), Pos (Pos))
 import Language.Futhark.Semantic (includeToString, mkInitialImport)
@@ -89,13 +89,14 @@ tokenExp (Parens appExp _loc) = tokenExp appExp
 tokenExp (AppExp appExp _appRes) = tokenAppExp appExp
 tokenExp _ = []
 
+-- Question: maybe go through some AppExp definations?
 tokenAppExp :: AppExpBase f vn -> [SemanticTokenAbsolute]
 tokenAppExp (BinOp _qn _t (exp1, _stuc1) (exp2, _struc2) _loc) = tokenExp exp1 ++ tokenExp exp2
 tokenAppExp (Apply exp1 exp2 _diet _loc) = tokenExp exp1 ++ tokenExp exp2
 tokenAppExp _ = []
 
 tokenTypeExp :: TypeExp vn -> [SemanticTokenAbsolute]
-tokenTypeExp _ = []
+tokenTypeExp t = [mkSematicToken (srclocOf t) SttType]
 
 tokenSigExp :: SigExpBase f vn -> [SemanticTokenAbsolute]
 tokenSigExp _ = []
